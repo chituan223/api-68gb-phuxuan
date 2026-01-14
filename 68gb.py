@@ -65,7 +65,7 @@ def predict_18(h):
     return 'T' if np.percentile(h, 10) > 7.5 else 'X'
 
 def predict_19(h):
-    return 'T' if np.mean(h[-50:]) > np.mean(h[:-50]) else 'X'
+    return 'T' if np.mean(h[-50:]) > np.mean(h[:-50]) if len(h) > 100 else 'X'
 
 def predict_20(h):
     return 'T' if np.mean(h[-30:]) > 11.0 else 'X'
