@@ -1,198 +1,350 @@
-from flask import Flask, jsonify
 import requests
-from collections import deque
-import statistics
+import numpy as np
+from flask import Flask, jsonify
 
 app = Flask(__name__)
 
-# ==============================
-# Cấu hình người dùng & API
-# ==============================
-API_URL = "https://gbgayy-default-rtdb.asia-southeast1.firebasedatabase.app/taixiu_sessions/current.json"
-USER_ID = "tuandz"
+FIREBASE_URL = "https://gbmd5-4a69a-default-rtdb.asia-southeast1.firebasedatabase.app/taixiu_sessions.json"
 
-# ==============================
-# Lịch sử để phân tích cầu
-# ==============================
-history = deque(maxlen=50)
-totals = deque(maxlen=50)
+# ========== 100 THUẬT TOÁN THẬT – KHÔNG RANDOM ==========
+def predict_00(h):
+    return 'T' if h[-1] >= 11 else 'X'
 
-# ==============================
-# 🧠 AI21–AI30 – thuật toán thực chiến
-# ==============================
-def ai21_dynamic_parity(history, totals):
-    if len(totals) < 6:
-        return {"du_doan": "Tài", "do_tin_cay": 65.9}
-    last6 = totals[-6:]
-    even = sum(1 for t in last6 if t % 2 == 0)
-    last = "Tài" if totals[-1] >= 11 else "Xỉu"
-    if even >= 5:
-        return {"du_doan": "Xỉu", "do_tin_cay": 89.2}
-    if even <= 1:
-        return {"du_doan": "Tài", "do_tin_cay": 88.5}
-    return {"du_doan": last, "do_tin_cay": 72.3}
+def predict_01(h):
+    return 'T' if sum(h[-3:]) >= 33 else 'X'
 
-def ai22_cau_dao_chieu(history, totals):
-    if len(history) < 6:
-        return {"du_doan": "Tài", "do_tin_cay": 64.7}
-    seq = "".join("T" if h == "Tài" else "X" for h in history[-6:])
-    if seq.endswith("TTTX") or seq.endswith("XXXT"):
-        return {"du_doan": "Tài" if history[-1] == "Xỉu" else "Xỉu", "do_tin_cay": 91.0}
-    return {"du_doan": history[-1], "do_tin_cay": 73.1}
+def predict_02(h):
+    return 'T' if h[-1] > np.mean(h[-5:]) else 'X'
 
-def ai23_weighted_pattern(history, totals):
-    if len(history) < 10:
-        return {"du_doan": "Tài", "do_tin_cay": 66.3}
-    weights = [0.1, 0.15, 0.2, 0.25, 0.3]
-    score = 0
-    for i, w in enumerate(weights):
-        if history[-(i+1)] == "Tài":
-            score += w
-        else:
-            score -= w
-    if score > 0.2:
-        return {"du_doan": "Tài", "do_tin_cay": 88.1}
-    if score < -0.2:
-        return {"du_doan": "Xỉu", "do_tin_cay": 87.9}
-    return {"du_doan": history[-1], "do_tin_cay": 72.0}
+def predict_03(h):
+    return 'T' if len(h) >= 5 and h[-1] > h[-5] else 'X'
 
-def ai24_stable_chain(history, totals):
-    if len(totals) < 7:
-        return {"du_doan": "Tài", "do_tin_cay": 65.0}
-    var = max(totals[-7:]) - min(totals[-7:])
-    if var <= 3:
-        return {"du_doan": "Xỉu", "do_tin_cay": 84.6}
-    else:
-        return {"du_doan": "Tài", "do_tin_cay": 79.3}
+def predict_04(h):
+    return 'T' if sum(1 for x in h[-5:] if x >= 11) >= 3 else 'X'
 
-def ai25_cross_cycle(history, totals):
-    if len(history) < 8:
-        return {"du_doan": "Tài", "do_tin_cay": 65.8}
-    seq = "".join("T" if h == "Tài" else "X" for h in history[-8:])
-    if "TXTX" in seq or "XTXT" in seq:
-        next_pred = "Tài" if history[-1] == "Xỉu" else "Xỉu"
-        return {"du_doan": next_pred, "do_tin_cay": 90.4}
-    return {"du_doan": history[-1], "do_tin_cay": 73.0}
+def predict_05(h):
+    return 'T' if np.std(h[-5:]) < 2 else 'X'
 
-def ai26_phase_shift(history, totals):
-    if len(totals) < 6:
-        return {"du_doan": "Tài", "do_tin_cay": 65.2}
-    avg3_now = statistics.mean(totals[-3:])
-    avg3_prev = statistics.mean(totals[-6:-3])
-    if avg3_now > avg3_prev + 1:
-        return {"du_doan": "Tài", "do_tin_cay": 87.4}
-    if avg3_now < avg3_prev - 1:
-        return {"du_doan": "Xỉu", "do_tin_cay": 86.8}
-    return {"du_doan": history[-1], "do_tin_cay": 74.0}
+def predict_06(h):
+    return 'T' if h[-1] + h[-2] >= 22 else 'X'
 
-def ai27_reverse_tail(history, totals):
-    if len(history) < 4:
-        return {"du_doan": "Tài", "do_tin_cay": 63.8}
-    last = history[-1]
-    if history[-4:].count(last) == 3:
-        return {"du_doan": "Xỉu" if last == "Tài" else "Tài", "do_tin_cay": 91.2}
-    return {"du_doan": last, "do_tin_cay": 71.5}
+def predict_07(h):
+    return 'T' if np.median(h[-5:]) >= 11 else 'X'
 
-def ai28_entropy(history, totals):
-    if len(history) < 10:
-        return {"du_doan": "Tài", "do_tin_cay": 64.9}
-    pattern = history[-10:]
-    diversity = len(set(pattern))
-    if diversity == 1:
-        return {"du_doan": "Xỉu" if pattern[-1] == "Tài" else "Tài", "do_tin_cay": 93.4}
-    elif diversity == 2:
-        return {"du_doan": history[-1], "do_tin_cay": 78.2}
-    return {"du_doan": history[-1], "do_tin_cay": 71.2}
+def predict_08(h):
+    return 'T' if h[-1] == max(h[-5:]) else 'X'
 
-def ai29_long_short_avg(history, totals):
-    if len(totals) < 12:
-        return {"du_doan": "Tài", "do_tin_cay": 65.6}
-    short_avg = sum(totals[-4:]) / 4
-    long_avg = sum(totals[-12:]) / 12
-    if short_avg > long_avg + 0.8:
-        return {"du_doan": "Tài", "do_tin_cay": 86.9}
-    if short_avg < long_avg - 0.8:
-        return {"du_doan": "Xỉu", "do_tin_cay": 86.5}
-    return {"du_doan": history[-1], "do_tin_cay": 72.0}
+def predict_09(h):
+    return 'T' if h[-1] - h[-2] >= 3 else 'X'
 
-def ai30_chain_balance(history, totals):
-    if len(history) < 6:
-        return {"du_doan": "Tài", "do_tin_cay": 65.4}
-    chain = 0
-    for i in range(1, 6):
-        if history[-i] == history[-(i+1)]:
-            chain += 1
-        else:
-            break
-    if chain >= 3:
-        return {"du_doan": "Xỉu" if history[-1] == "Tài" else "Tài", "do_tin_cay": 90.1}
-    return {"du_doan": history[-1], "do_tin_cay": 73.1}
+def predict_10(h):
+    return 'T' if sum(h[-2:]) >= 22 else 'X'
 
-# ==============================
-# 🌐 Hàm tổng hợp AI30
-# ==============================
-def ai_logic_30(tong, x1, x2, x3, history_list):
-    totals_list = [x1+x2+x3]
-    ai_funcs = [
-        ai21_dynamic_parity, ai22_cau_dao_chieu, ai23_weighted_pattern, ai24_stable_chain,
-        ai25_cross_cycle, ai26_phase_shift, ai27_reverse_tail, ai28_entropy,
-        ai29_long_short_avg, ai30_chain_balance
-    ]
-    vote_counts = {}
-    vote_conf = {}
-    for func in ai_funcs:
-        res = func(history_list, totals_list)
-        pred = res["du_doan"]
-        conf = res["do_tin_cay"]
-        vote_counts[pred] = vote_counts.get(pred, 0) + 1
-        vote_conf[pred] = conf  # lấy giá trị cuối cùng của vote nhiều nhất
-    final_pred = max(vote_counts, key=lambda k: vote_counts[k])
-    final_conf = vote_conf[final_pred]
-    return final_pred, final_conf
+def predict_11(h):
+    return 'T' if min(h[-5:]) >= 9 else 'X'
 
-# ==============================
-# 🌐 API /api/taixiu
-# ==============================
-@app.route("/api/taixiu")
-def get_taixiu():
+def predict_12(h):
+    return 'T' if max(h[-5:]) >= 14 else 'X'
+
+def predict_13(h):
+    return 'T' if h[-1] > 10 and h[-2] > 10 else 'X'
+
+def predict_14(h):
+    return 'T' if len(h) >= 6 and h[-1] > h[-6] else 'X'
+
+def predict_15(h):
+    return 'T' if sum(h[-4:]) >= 44 else 'X'
+
+def predict_16(h):
+    return 'T' if np.diff(h[-3:]).mean() > 0 else 'X'
+
+def predict_17(h):
+    return 'T' if h[-1] >= 12 and h[-2] >= 12 else 'X'
+
+def predict_18(h):
+    return 'T' if sum(1 for x in h[-7:] if x >= 11) >= 4 else 'X'
+
+def predict_19(h):
+    return 'T' if h[-1] > np.percentile(h[-10:], 70) else 'X'
+
+def predict_20(h):
+    return 'T' if h[-1] + h[-3] >= 22 else 'X'
+
+def predict_21(h):
+    return 'T' if h[-1] - h[-3] >= 4 else 'X'
+
+def predict_22(h):
+    return 'T' if np.mean(h[-7:]) >= 11 else 'X'
+
+def predict_23(h):
+    return 'T' if h[-1] >= 11 and h[-2] >= 11 else 'X'
+
+def predict_24(h):
+    return 'T' if sum(h[-5:]) >= 55 else 'X'
+
+def predict_25(h):
+    return 'T' if h[-1] > h[-2] > h[-3] else 'X'
+
+def predict_26(h):
+    return 'T' if len(h) >= 8 and h[-1] > h[-8] else 'X'
+
+def predict_27(h):
+    return 'T' if np.var(h[-5:]) < 1.5 else 'X'
+
+def predict_28(h):
+    return 'T' if h[-1] + h[-2] + h[-3] >= 33 else 'X'
+
+def predict_29(h):
+    return 'T' if h[-1] >= 13 or h[-2] >= 13 else 'X'
+
+def predict_30(h):
+    return 'T' if sum(1 for x in h[-6:] if x >= 11) >= 4 else 'X'
+
+def predict_31(h):
+    return 'T' if h[-1] > np.max(h[-10:-1]) else 'X'
+
+def predict_32(h):
+    return 'T' if h[-1] >= 11 and h[-2] < 11 else 'X'
+
+def predict_33(h):
+    return 'T' if np.percentile(h[-5:], 80) >= 12 else 'X'
+
+def predict_34(h):
+    return 'T' if h[-1] - h[-5] >= 3 else 'X'
+
+def predict_35(h):
+    return 'T' if sum(h[-2:]) >= 23 else 'X'
+
+def predict_36(h):
+    return 'T' if h[-1] <= 9 and h[-2] <= 9 else 'X'
+
+def predict_37(h):
+    return 'T' if np.mean(h[-9:]) >= 11 else 'X'
+
+def predict_38(h):
+    return 'T' if h[-1] + h[-2] + h[-4] >= 33 else 'X'
+
+def predict_39(h):
+    return 'T' if len(h) >= 10 and h[-1] > h[-10] else 'X'
+
+def predict_40(h):
+    return 'T' if sum(1 for x in h[-8:] if x >= 11) >= 5 else 'X'
+
+def predict_41(h):
+    return 'T' if h[-1] >= 11 and h[-3] >= 11 else 'X'
+
+def predict_42(h):
+    return 'T' if np.min(h[-5:]) >= 10 else 'X'
+
+def predict_43(h):
+    return 'T' if h[-1] - h[-2] >= 2 and h[-2] - h[-3] >= 2 else 'X'
+
+def predict_44(h):
+    return 'T' if np.percentile(h[-7:], 90) >= 13 else 'X'
+
+def predict_45(h):
+    return 'T' if h[-1] + h[-2] >= 24 else 'X'
+
+def predict_46(h):
+    return 'T' if sum(h[-3:]) >= 34 else 'X'
+
+def predict_47(h):
+    return 'T' if h[-1] > np.median(h[-9:]) else 'X'
+
+def predict_48(h):
+    return 'T' if len(h) >= 12 and h[-1] > h[-12] else 'X'
+
+def predict_49(h):
+    return 'T' if np.std(h[-7:]) < 1.8 else 'X'
+
+def predict_50(h):
+    return 'T' if h[-1] >= 11 and h[-2] >= 11 and h[-3] >= 11 else 'X'
+
+def predict_51(h):
+    return 'T' if max(h[-3:]) >= 15 else 'X'
+
+def predict_52(h):
+    return 'T' if sum(1 for x in h[-9:] if x >= 11) >= 6 else 'X'
+
+def predict_53(h):
+    return 'T' if h[-1] - h[-6] >= 4 else 'X'
+
+def predict_54(h):
+    return 'T' if np.mean(h[-11:]) >= 11 else 'X'
+
+def predict_55(h):
+    return 'T' if h[-1] + h[-5] >= 22 else 'X'
+
+def predict_56(h):
+    return 'T' if h[-1] >= 12 and h[-2] < 10 else 'X'
+
+def predict_57(h):
+    return 'T' if len(h) >= 15 and h[-1] > h[-15] else 'X'
+
+def predict_58(h):
+    return 'T' if sum(h[-4:]) >= 45 else 'X'
+
+def predict_59(h):
+    return 'T' if np.percentile(h[-6:], 75) >= 12 else 'X'
+
+def predict_60(h):
+    return 'T' if h[-1] >= 11 and h[-4] >= 11 else 'X'
+
+def predict_61(h):
+    return 'T' if np.var(h[-9:]) < 2.5 else 'X'
+
+def predict_62(h):
+    return 'T' if h[-1] > np.mean(h[-13:]) else 'X'
+
+def predict_63(h):
+    return 'T' if sum(1 for x in h[-10:] if x >= 11) >= 7 else 'X'
+
+def predict_64(h):
+    return 'T' if h[-1] + h[-2] + h[-5] >= 33 else 'X'
+
+def predict_65(h):
+    return 'T' if h[-1] - h[-7] >= 3 else 'X'
+
+def predict_66(h):
+    return 'T' if np.min(h[-7:]) >= 10 else 'X'
+
+def predict_67(h):
+    return 'T' if h[-1] >= 14 or h[-2] >= 14 else 'X'
+
+def predict_68(h):
+    return 'T' if np.mean(h[-15:]) >= 11 else 'X'
+
+def predict_69(h):
+    return 'T' if h[-1] + h[-2] + h[-6] >= 33 else 'X'
+
+def predict_70(h):
+    return 'T' if len(h) >= 20 and h[-1] > h[-20] else 'X'
+
+def predict_71(h):
+    return 'T' if sum(h[-5:]) >= 56 else 'X'
+
+def predict_72(h):
+    return 'T' if np.percentile(h[-8:], 80) >= 12 else 'X'
+
+def predict_73(h):
+    return 'T' if h[-1] >= 11 and h[-5] >= 11 else 'X'
+
+def predict_74(h):
+    return 'T' if np.std(h[-11:]) < 2.2 else 'X'
+
+def predict_75(h):
+    return 'T' if h[-1] > np.percentile(h[-12:], 70) else 'X'
+
+def predict_76(h):
+    return 'T' if sum(1 for x in h[-11:] if x >= 11) >= 7 else 'X'
+
+def predict_77(h):
+    return 'T' if h[-1] + h[-3] + h[-5] >= 33 else 'X'
+
+def predict_78(h):
+    return 'T' if h[-1] - h[-8] >= 4 else 'X'
+
+def predict_79(h):
+    return 'T' if np.mean(h[-17:]) >= 11 else 'X'
+
+def predict_80(h):
+    return 'T' if max(h[-5:]) >= 15 else 'X'
+
+def predict_81(h):
+    return 'T' if h[-1] >= 11 and h[-6] >= 11 else 'X'
+
+def predict_82(h):
+    return 'T' if sum(h[-6:]) >= 66 else 'X'
+
+def predict_83(h):
+    return 'T' if np.var(h[-13:]) < 3 else 'X'
+
+def predict_84(h):
+    return 'T' if h[-1] > np.mean(h[-19:]) else 'X'
+
+def predict_85(h):
+    return 'T' if sum(1 for x in h[-12:] if x >= 11) >= 8 else 'X'
+
+def predict_86(h):
+    return 'T' if h[-1] + h[-4] + h[-7] >= 33 else 'X'
+
+def predict_87(h):
+    return 'T' if len(h) >= 25 and h[-1] > h[-25] else 'X'
+
+def predict_88(h):
+    return 'T' if np.percentile(h[-9:], 85) >= 13 else 'X'
+
+def predict_89(h):
+    return 'T' if h[-1] - h[-9] >= 3 else 'X'
+
+def predict_90(h):
+    return 'T' if np.min(h[-9:]) >= 9 else 'X'
+
+def predict_91(h):
+    return 'T' if h[-1] >= 13 and h[-2] >= 13 else 'X'
+
+def predict_92(h):
+    return 'T' if sum(h[-7:]) >= 77 else 'X'
+
+def predict_93(h):
+    return 'T' if np.mean(h[-21:]) >= 11 else 'X'
+
+def predict_94(h):
+    return 'T' if h[-1] > np.max(h[-7:-1]) else 'X'
+
+def predict_95(h):
+    return 'T' if sum(1 for x in h[-13:] if x >= 11) >= 8 else 'X'
+
+def predict_96(h):
+    return 'T' if h[-1] + h[-5] + h[-9] >= 33 else 'X'
+
+def predict_97(h):
+    return 'T' if np.std(h[-15:]) < 2.8 else 'X'
+
+def predict_98(h):
+    return 'T' if h[-1] - h[-10] >= 4 else 'X'
+
+def predict_99(h):
+    return 'T' if np.percentile(h[-10:], 90) >= 14 else 'X'
+
+# ========== ENSEMBLE ==========
+def ensemble_predict(h):
+    votes = [globals()[f'predict_{i:02d}'](h) for i in range(100)]
+    t = votes.count('T')
+    return 'T' if t > 50 else 'X', round(t / 100, 2)
+
+# ========== API ==========
+@app.route("/api/taixiumd5", methods=["GET"])
+def taixiumd5():
     try:
-        data = requests.get(API_URL, timeout=5).json()
-        phien = data.get("Phien")
-        kq = data.get("ket_qua")
-        x1 = data.get("xuc_xac_1")
-        x2 = data.get("xuc_xac_2")
-        x3 = data.get("xuc_xac_3")
-        tong = data.get("tong")
+        res = requests.get(FIREBASE_URL, timeout=10)
+        data = res.json()
+        if not data:
+            return jsonify({"error": "No data"}), 404
 
-        if kq:
-            history.append(kq)
-            totals.append(tong)
+        sessions = sorted(data.values(), key=lambda x: int(x["phien"]))
+        totals = [int(s["xuc_xac_1"]) + int(s["xuc_xac_2"]) + int(s["xuc_xac_3"]) for s in sessions]
 
-        du_doan, do_tin_cay = ai_logic_30(tong, x1, x2, x3, list(history))
+        prediction, confidence = ensemble_predict(totals)
+
+        latest = sessions[-1]
+        xx1 = int(latest["xuc_xac_1"])
+        xx2 = int(latest["xuc_xac_2"])
+        xx3 = int(latest["xuc_xac_3"])
+        tong = xx1 + xx2 + xx3
 
         return jsonify({
-            "id": USER_ID,
-            "phien": phien,
-            "xuc_xac_1": x1,
-            "xuc_xac_2": x2,
-            "xuc_xac_3": x3,
+            "phien": latest["phien"],
+            "xuc_xac_1": xx1,
+            "xuc_xac_2": xx2,
+            "xuc_xac_3": xx3,
             "tong": tong,
-            "du_doan": du_doan,
-            "do_tin_cay": f"{do_tin_cay}%"
+            "du_doan": prediction,
+            "confidence": confidence,
+            "status": "success"
         })
     except Exception as e:
-        return jsonify({"error": str(e), "status": "fail"})
-
-# ==============================
-# 🏠 Trang chủ
-# ==============================
-@app.route("/")
-def home():
-    return """
-    <h2>TOOL TÀI XỈU AI30 + AI21-30 THỰC CHIẾN</h2>
-    <p>API: <a href='/api/taixiu'>/api/taixiu</a></p>
-    <p>Người dùng: <b>tuandz</b></p>
-    """
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    app.run(host="0.0.0.0", port=5000)
